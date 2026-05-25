@@ -5,30 +5,44 @@ import InstallPrompt from './components/InstallPrompt';
 import { useToast } from './context/ToastContext';
 import { useMqtt } from './context/MqttContext';
 
+// One-time cleanup of stale keys from old identity system
+function cleanStaleStorage() {
+  ['echo_tofu', 'echo_identity'].forEach(k => localStorage.removeItem(k));
+}
+cleanStaleStorage();
+
 function App() {
-  const [username, setUsername] = useState('');
-  const [dark, setDark] = useState(false);
-  const { showToast } = useToast();
+  // Persist username so page reload keeps you logged in
+  const [username, setUsername] = useState(() => localStorage.getItem('echo_username') || '');
+  const [dark, setDark]         = useState(() => localStorage.getItem('echo_dark') === 'true');
+  const { showToast }           = useToast();
   const { status, error, connect, disconnect } = useMqtt();
   const lastStatusRef = useRef(status);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
+    localStorage.setItem('echo_dark', dark);
   }, [dark]);
 
-  const handleToggleDark = () => {
-    setDark((current) => !current);
-  };
+  // Auto-reconnect on page reload if a username was saved
+  useEffect(() => {
+    const saved = localStorage.getItem('echo_username');
+    if (saved) {
+      connect(saved).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleConnect = async (nextUsername) => {
     try {
       await connect(nextUsername);
       setUsername(nextUsername);
+      localStorage.setItem('echo_username', nextUsername);
       showToast({
-        title: 'Connection successful.',
-        description: 'You have connected successfully, welcome to Echo!',
+        title: 'Connected.',
+        description: `Welcome to Echo, ${nextUsername}.`,
         status: 'success',
-        duration: 4000,
+        duration: 3000,
       });
     } catch (err) {
       console.error('[Echo] connect failed:', err);
@@ -42,42 +56,39 @@ function App() {
   };
 
   useEffect(() => {
-    if (lastStatusRef.current === status) {
-      return;
-    }
+    if (lastStatusRef.current === status) return;
 
-    if (status === 'disconnected') {
+    // Disconnected = brief drop, auto-reconnect will fire — don't log the user out
+    if (status === 'disconnected' && username) {
       showToast({
-        title: 'Oops..',
-        description:
-          'You have been disconnected. Either by timeout or voluntarily by another user connected with your username',
+        title: 'Connection dropped.',
+        description: 'Reconnecting automatically...',
         status: 'warning',
-        duration: 4000,
+        duration: 3000,
       });
-      setUsername('');
+      // Do NOT clear username — let MQTT auto-reconnect restore the session
     }
 
     if (status === 'error' && error) {
       showToast({
-        title: 'Oops..',
-        description: 'An error has occurred: ' + error.message,
+        title: 'Connection error.',
+        description: error.message || 'Something went wrong.',
         status: 'error',
         duration: 4000,
       });
     }
 
     lastStatusRef.current = status;
-  }, [status, error, showToast]);
+  }, [status, error, username, showToast]);
 
   const handleSignOut = () => {
     disconnect();
     setUsername('');
+    localStorage.removeItem('echo_username');
   };
 
   if (!username) {
-    return (
-      <Login onEnter={handleConnect} dark={dark} onToggleDark={handleToggleDark} />
-    );
+    return <Login onEnter={handleConnect} dark={dark} onToggleDark={() => setDark(d => !d)} />;
   }
 
   return (
@@ -85,7 +96,7 @@ function App() {
       <ChatPage
         username={username}
         dark={dark}
-        onToggleDark={handleToggleDark}
+        onToggleDark={() => setDark(d => !d)}
         onSignOut={handleSignOut}
       />
       <InstallPrompt dark={dark} />
