@@ -1,6 +1,9 @@
 # Local developer guide (not for source control)
 GUIDE.md
 
+# Claude session data
+.claude/
+
 # Logs
 logs
 *.log
