@@ -441,12 +441,7 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
     }
   }, [currentMessages.length]); // intentionally excludes isAtBottom — use ref instead
 
-  // ── Browser notification permission ──────────────────────────────────────
-  useEffect(() => {
-    if (status === 'connected' && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-  }, [status]);
+  // Notification permission is requested via the sidebar button (user gesture required)
 
   // ── Clear tab-title flash when tab regains focus ──────────────────────────
   useEffect(() => {
@@ -619,23 +614,26 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
         }));
       }
 
-      // Pillar 3: Notify when tab is hidden and topic is not muted
+      // Notify when message is from someone else and topic is not muted
       if (parsedMsg.sender !== username && parsedMsg.sender !== 'system') {
         if (!mutedTopics.has(targetTopic)) {
-          playNotificationSound();
+          const isBackground = document.hidden || targetTopic !== tabsRef.current[activeTabIndex]?.topic;
+          // Only play sound when tab is hidden or message is in a different chat
+          if (isBackground) playNotificationSound();
           if (document.hidden) {
             if (Notification.permission === 'granted') {
               const chatLabel = targetTopic === 'chat'
                 ? '#general'
                 : formatChatLabel(targetTopic, username);
-              const n = new Notification(`${parsedMsg.sender} in ${chatLabel}`, {
+              const n = new Notification(`${parsedMsg.sender}`, {
                 body: parsedMsg.type === 'text'
                   ? (parsedMsg.content || '').substring(0, 100)
                   : `Sent a ${parsedMsg.type}`,
                 tag:  `echo_${targetTopic}`,
                 icon: '/icon-192.png',
+                badge: '/icon-192.png',
               });
-              n.onclick = () => { window.focus(); };
+              n.onclick = () => { window.focus(); n.close(); };
             }
             if (!titleFlashRef.current) {
               let tog = false;
@@ -1503,6 +1501,28 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
           );
         })}
       </div>
+
+      {/* Enable notifications prompt */}
+      {'Notification' in window && Notification.permission !== 'granted' && (
+        <div style={{ padding: '0 12px 8px' }}>
+          <button
+            type="button"
+            onClick={() => Notification.requestPermission()}
+            style={{
+              width: '100%', padding: '8px 12px', borderRadius: 10,
+              border: dark ? '1px solid rgba(96,165,250,0.25)' : '1px solid rgba(30,74,170,0.2)',
+              background: dark ? 'rgba(96,165,250,0.08)' : 'rgba(30,74,170,0.06)',
+              cursor: 'pointer', fontSize: 11, fontWeight: 500,
+              color: dark ? '#60a5fa' : '#1e4aaa',
+              fontFamily: "'DM Sans', sans-serif",
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Volume2 size={12} />
+            {Notification.permission === 'denied' ? 'Notifications blocked in browser' : 'Enable notifications'}
+          </button>
+        </div>
+      )}
 
       {/* Sign out */}
       <div style={{ padding: '10px 12px 16px' }}>
