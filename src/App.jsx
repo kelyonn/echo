@@ -5,14 +5,24 @@ import InstallPrompt from './components/InstallPrompt';
 import { useToast } from './context/ToastContext';
 import { useMqtt } from './context/MqttContext';
 
-// One-time cleanup of stale keys from old identity system
-function cleanStaleStorage() {
-  ['echo_tofu', 'echo_identity'].forEach(k => localStorage.removeItem(k));
+// Bump this string any time you want to force-wipe all cached data for all users
+const STORAGE_VERSION = 'v3';
+
+function wipeStaleStorage() {
+  const saved = localStorage.getItem('echo_storage_version');
+  if (saved === STORAGE_VERSION) return;
+
+  // Clear everything except the stable client ID and storage version marker
+  const keep = new Set(['echo_cid']);
+  Object.keys(localStorage)
+    .filter(k => k.startsWith('echo_') && !keep.has(k))
+    .forEach(k => localStorage.removeItem(k));
+
+  localStorage.setItem('echo_storage_version', STORAGE_VERSION);
 }
-cleanStaleStorage();
+wipeStaleStorage();
 
 function App() {
-  // Persist username so page reload keeps you logged in
   const [username, setUsername] = useState(() => localStorage.getItem('echo_username') || '');
   const [dark, setDark]         = useState(() => localStorage.getItem('echo_dark') === 'true');
   const { showToast }           = useToast();
@@ -21,15 +31,13 @@ function App() {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
-    localStorage.setItem('echo_dark', dark);
+    localStorage.setItem('echo_dark', String(dark));
   }, [dark]);
 
   // Auto-reconnect on page reload if a username was saved
   useEffect(() => {
     const saved = localStorage.getItem('echo_username');
-    if (saved) {
-      connect(saved).catch(() => {});
-    }
+    if (saved) connect(saved).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -38,12 +46,6 @@ function App() {
       await connect(nextUsername);
       setUsername(nextUsername);
       localStorage.setItem('echo_username', nextUsername);
-      showToast({
-        title: 'Connected.',
-        description: `Welcome to Echo, ${nextUsername}.`,
-        status: 'success',
-        duration: 3000,
-      });
     } catch (err) {
       console.error('[Echo] connect failed:', err);
       showToast({
@@ -58,17 +60,6 @@ function App() {
   useEffect(() => {
     if (lastStatusRef.current === status) return;
 
-    // Disconnected = brief drop, auto-reconnect will fire — don't log the user out
-    if (status === 'disconnected' && username) {
-      showToast({
-        title: 'Connection dropped.',
-        description: 'Reconnecting automatically...',
-        status: 'warning',
-        duration: 3000,
-      });
-      // Do NOT clear username — let MQTT auto-reconnect restore the session
-    }
-
     if (status === 'error' && error) {
       showToast({
         title: 'Connection error.',
@@ -79,7 +70,7 @@ function App() {
     }
 
     lastStatusRef.current = status;
-  }, [status, error, username, showToast]);
+  }, [status, error, showToast]);
 
   const handleSignOut = () => {
     disconnect();

@@ -248,7 +248,7 @@ function playNotificationSound() {
 }
 
 export default function ChatPage({ username = 'me', dark = false, onToggleDark, onSignOut }) {
-  const { client, status, catching } = useMqtt();
+  const { client, status } = useMqtt();
   const { showToast } = useToast();
 
   // ── Core state ─────────────────────────────────────────────────────────────
@@ -1399,7 +1399,7 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
           Echo
         </div>
         <div style={{ fontSize: 10, color: textTertiary, marginTop: 4, letterSpacing: '0.06em', fontWeight: 600 }}>
-          SECURE MESH CHAT
+          MESH CHAT
         </div>
       </div>
 
@@ -1738,14 +1738,7 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
               flexDirection: 'column',
             }}
           >
-          {/* Pillar 2: catch-up indicator shown after reconnect */}
-          {catching && (
-            <div style={{ textAlign: 'center', color: '#f59e0b', fontSize: 12, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-              <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} />
-              Catching up on missed messages...
-            </div>
-          )}
-          {currentMessages.length === 0 && !catching && (
+          {currentMessages.length === 0 && (
             <div style={{ textAlign: 'center', color: textTertiary, fontSize: 13, marginTop: 60 }}>
               No messages yet. Say hello!
             </div>
