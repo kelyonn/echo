@@ -79,7 +79,17 @@ function nowTime() {
 
 function safeParse(raw) {
   try {
-    return parseMessage(raw);
+    const msg = parseMessage(raw);
+    // Old builds sent DMs with content:'[Encrypted]' + an encrypted field.
+    // We no longer have the decrypt key, so show a helpful fallback instead.
+    if (msg.content === '[Encrypted]' || msg.encrypted) {
+      return {
+        ...msg,
+        content: 'Message from an outdated client. Ask them to hard-refresh (Ctrl+Shift+R / Cmd+Shift+R).',
+        encrypted: undefined,
+      };
+    }
+    return msg;
   } catch {
     return {
       id: `msg_${Date.now()}_${Math.random().toString(16).slice(2)}`,

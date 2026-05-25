@@ -6,7 +6,7 @@ import { useToast } from './context/ToastContext';
 import { useMqtt } from './context/MqttContext';
 
 // Bump this string any time you want to force-wipe all cached data for all users
-const STORAGE_VERSION = 'v3';
+const STORAGE_VERSION = 'v4';
 
 function wipeStaleStorage() {
   const saved = localStorage.getItem('echo_storage_version');

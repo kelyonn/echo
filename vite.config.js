@@ -13,6 +13,8 @@ export default defineConfig({
 
       // Cache the app shell + static assets
       workbox: {
+        skipWaiting:  true,
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         runtimeCaching: [
           {
@@ -41,7 +43,7 @@ export default defineConfig({
       manifest: {
         name: 'Echo',
         short_name: 'Echo',
-        description: 'Real-time encrypted mesh chat',
+        description: 'Real-time browser chat over MQTT. No sign-up, no server.',
         theme_color: '#1e4aaa',
         background_color: '#eef3fb',
         display: 'standalone',
