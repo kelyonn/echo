@@ -45,8 +45,7 @@ export default function AddChatFormModal({ isOpen, onClose, setChats, chats, cli
           showToast({ title: 'Already joined', description: 'You are already in this chat.', status: 'info', duration: 4000 });
           return;
         }
-        client.subscribe(topic);
-        client.publish(topic, `${username}: has just connected`);
+        client.subscribe(topic, { qos: 1 });
         setChats([...chats, { name: topic }]);
       } else {
         if (!isValidTopicName(trimmed)) {
@@ -58,8 +57,7 @@ export default function AddChatFormModal({ isOpen, onClose, setChats, chats, cli
           showToast({ title: 'Already joined', description: 'You are already in this chat.', status: 'info', duration: 4000 });
           return;
         }
-        client.subscribe(topic);
-        client.publish(topic, `${username}: has just connected`);
+        client.subscribe(topic, { qos: 1 });
         setChats([...chats, { name: topic }]);
       }
 

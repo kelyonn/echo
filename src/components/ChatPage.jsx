@@ -571,9 +571,10 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
         ];
         if (participants.includes(normalizedMe)) {
           const normalizedTopic = parsed.normalized;
+          // Subscribe BEFORE updating state — broker handles duplicate subscribes fine
+          try { client.subscribe(normalizedTopic, { qos: 1 }); } catch {}
           setChats((prev) => {
             if (prev.some((c) => c.name === normalizedTopic)) return prev;
-            client.subscribe(normalizedTopic);
             return [...prev, { name: normalizedTopic }];
           });
           const parsedMsg = safeParse(message.toString());
@@ -926,10 +927,17 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
   };
 
   const handleDisconnectChat = (topic) => {
-    client.unsubscribe(topic);
-    client.publish(topic, JSON.stringify(formatMessage('text', `${username}: has disconnected`, 'system')));
+    const tabIdx = tabs.findIndex(t => t.topic === topic);
+    try { client.unsubscribe(topic); } catch {}
+    // Clear messages from state and localStorage so the chat doesn't resurrect on reload
+    setMessagesByTopic(prev => {
+      const { [topic]: _, ...rest } = prev;
+      return rest;
+    });
+    localStorage.removeItem(LS_PREFIX + topic);
     setChats((prev) => prev.filter((c) => c.name !== topic));
-    setActiveTabIndex(0);
+    // Adjust active index: if removing active tab or one before it, step back
+    setActiveTabIndex(prev => (prev >= tabIdx && prev > 0 ? prev - 1 : prev));
   };
 
   const handleReactionAdd = (messageId, emoji) => {
