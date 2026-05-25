@@ -46,9 +46,15 @@ export const MqttProvider = ({ children }) => {
       connectTimeout:  30 * 1000,
       will: {
         topic:   'chat',
-        payload: `${username}: has disconnected`,
-        qos:     0,
-        retain:  false,
+        payload: JSON.stringify({
+          id:        `sys_${Date.now()}_will`,
+          type:      'text',
+          content:   `${username} left the chat`,
+          sender:    'system',
+          timestamp: new Date().toISOString(),
+        }),
+        qos:    0,
+        retain: false,
       },
       rejectUnauthorized: false,
     });
@@ -68,7 +74,6 @@ export const MqttProvider = ({ children }) => {
           setCatching(true);
           setTimeout(() => setCatching(false), 3000);
         }
-        reconnecting = true;
 
         // Core subscriptions
         mqttClient.subscribe('chat',       { qos: 1 });
@@ -78,8 +83,17 @@ export const MqttProvider = ({ children }) => {
           if (err) console.warn('[Echo] users/+/key subscription skipped:', err.message);
         });
 
-        // Publish presence + public key happens in ChatPage after identity is ready
-        mqttClient.publish('chat', `${username}: has just connected`, { qos: 0 });
+        // Only announce on the very first connect, not every reconnect
+        if (!reconnecting) {
+          mqttClient.publish('chat', JSON.stringify({
+            id:        `sys_${Date.now()}_join`,
+            type:      'text',
+            content:   `${username} joined the chat`,
+            sender:    'system',
+            timestamp: new Date().toISOString(),
+          }), { qos: 0 });
+        }
+        reconnecting = true;
 
         cleanup();
         resolve(mqttClient);
