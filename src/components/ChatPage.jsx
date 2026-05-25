@@ -318,6 +318,10 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
   const typingThrottleRef    = useRef(0);
   const titleFlashRef        = useRef(null);
   const originalTitleRef     = useRef(document.title);
+  // Always-current ref so async callbacks never use stale peerKeys state
+  const peerKeysRef          = useRef(peerKeys);
+  // Queue of { parsedMsg, targetTopic } waiting for a peer key to arrive
+  const pendingDecryptRef    = useRef({});
 
   // ── Tabs ───────────────────────────────────────────────────────────────────
   const tabs = useMemo(
@@ -487,6 +491,38 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
     } catch {}
   }, [client, status, identityReady, publicProfile, username, publishRetained]);
 
+  // ── Keep peerKeysRef in sync so async callbacks always see current keys ───
+  useEffect(() => { peerKeysRef.current = peerKeys; }, [peerKeys]);
+
+  // ── Re-decrypt messages that arrived before the peer's key was known ──────
+  useEffect(() => {
+    const pending = pendingDecryptRef.current;
+    const newKeys = peerKeys;
+    Object.keys(pending).forEach(async (peerName) => {
+      if (!newKeys[peerName]?.ecdhPubKey) return;
+      const queue = pending[peerName] || [];
+      delete pendingDecryptRef.current[peerName];
+      for (const { parsedMsg, targetTopic } of queue) {
+        try {
+          const decrypted = await decrypt(parsedMsg.encrypted, newKeys[peerName].ecdhPubKey);
+          if (decrypted !== null) {
+            setMessagesByTopic(prev => {
+              const msgs = prev[targetTopic] || [];
+              return {
+                ...prev,
+                [targetTopic]: msgs.map(m =>
+                  m.id === parsedMsg.id
+                    ? { ...m, content: decrypted, _decrypted: true }
+                    : m
+                ),
+              };
+            });
+          }
+        } catch {}
+      }
+    });
+  }, [peerKeys, decrypt]);
+
   // ── Persist muted topics ──────────────────────────────────────────────────
   useEffect(() => {
     try { localStorage.setItem('echo_muted', JSON.stringify([...mutedTopics])); } catch {}
@@ -530,10 +566,10 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
             });
             if (tofuStatus === 'conflict') {
               showToast({
-                title: 'Key conflict!',
-                description: `${payload.sender}'s identity key changed. Possible impersonation risk.`,
-                status: 'error',
-                duration: 8000,
+                title: `${payload.sender}'s key changed`,
+                description: 'Their identity was reset (new browser or cleared storage). Messages will re-encrypt with the new key.',
+                status: 'warning',
+                duration: 6000,
               });
             }
           }
@@ -640,19 +676,21 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
         const msgId = parsedMsg.id;
         verify(signingPayload, sig, sigPubKey).then(valid => {
           setVerifiedMsgs(prev => ({ ...prev, [msgId]: valid }));
-          // Register peer key from verified signature
+          // Only register key from message if we don't already have a full key for this peer
+          // (avoids overwriting ecdhPubKey with undefined when ecdhPubKey isn't in the message)
           if (valid && parsedMsg.sender && sigPubKey) {
-            setPeerKey(parsedMsg.sender, {
-              sigPubKey,
-              ecdhPubKey: parsedMsg.ecdhPubKey || peerKeys[parsedMsg.sender]?.ecdhPubKey,
-            });
+            const existing = peerKeysRef.current[parsedMsg.sender];
+            const ecdhPubKey = parsedMsg.ecdhPubKey || existing?.ecdhPubKey;
+            if (ecdhPubKey) {
+              setPeerKey(parsedMsg.sender, { sigPubKey, ecdhPubKey });
+            }
           }
         });
       }
 
       // Pillar 5: E2E decrypt if message has encrypted payload
       if (parsedMsg.encrypted && parsedMsg.sender !== username) {
-        const senderKey = peerKeys[parsedMsg.sender];
+        const senderKey = peerKeysRef.current[parsedMsg.sender];
         if (senderKey?.ecdhPubKey) {
           try {
             const decrypted = await decrypt(parsedMsg.encrypted, senderKey.ecdhPubKey);
@@ -661,6 +699,10 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
               parsedMsg._decrypted = true;
             }
           } catch {}
+        } else {
+          // Key not here yet — queue for decryption once the key arrives
+          const q = pendingDecryptRef.current[parsedMsg.sender] || [];
+          pendingDecryptRef.current[parsedMsg.sender] = [...q, { parsedMsg: { ...parsedMsg }, targetTopic }];
         }
       }
       // Also decrypt own sent messages that bounced back
@@ -669,7 +711,7 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
         if (dmP) {
           const peerName = normalizeUsername(dmP.userA) === normalizeUsername(username)
             ? dmP.userB : dmP.userA;
-          const peerKey = peerKeys[peerName];
+          const peerKey = peerKeysRef.current[peerName];
           if (peerKey?.ecdhPubKey) {
             try {
               const decrypted = await decrypt(parsedMsg.encrypted, peerKey.ecdhPubKey);
