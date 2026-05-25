@@ -124,7 +124,7 @@ export default function Login({ onEnter, dark = false, onToggleDark }) {
             margin: '6px 0 0', fontSize: 13,
             color: textMuted, letterSpacing: '0.02em',
           }}>
-            Real-time · End-to-end encrypted · No account needed
+            Real-time · Secure · No account needed
           </p>
         </div>
 

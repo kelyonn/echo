@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowUp, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight,
-  Edit3, Eye, EyeOff, Film, Lock, LogOut, MapPin, Menu, Mic, Moon,
-  Paperclip, Pin, Plus, RefreshCw, Reply, Search, Shield, ShieldCheck,
+  Edit3, Eye, EyeOff, Film, LogOut, MapPin, Menu, Mic, Moon,
+  Paperclip, Pin, Plus, RefreshCw, Reply, Search,
   Sun, Timer, Trash2, Volume2, VolumeX, X, Smile,
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
@@ -10,7 +10,6 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { useMqtt } from '../context/MqttContext';
 import { useToast } from '../context/ToastContext';
-import { useIdentity } from '../context/IdentityContext';
 import { formatMessage, parseMessage } from '../utils/messageFormatter';
 import { getLocation } from '../utils/location';
 import { isValidUrl, getUrlPreview } from '../utils/url';
@@ -249,12 +248,8 @@ function playNotificationSound() {
 }
 
 export default function ChatPage({ username = 'me', dark = false, onToggleDark, onSignOut }) {
-  const { client, status, catching, publishRetained } = useMqtt();
+  const { client, status, catching } = useMqtt();
   const { showToast } = useToast();
-  const {
-    identity, isReady: identityReady, fingerprint, publicProfile,
-    peerKeys, setPeerKey, sign, verify, encrypt, decrypt, resetIdentity,
-  } = useIdentity();
 
   // ── Core state ─────────────────────────────────────────────────────────────
   const [chats, setChats]               = useState([]);
@@ -299,14 +294,11 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
   const [viewOnce, setViewOnce]         = useState(false); // for current attachment
   const [seenViewOnce, setSeenViewOnce] = useState({}); // { [msgId]: true }
 
-  // ── Identity / security state ──────────────────────────────────────────────
-  // reactions: { [msgId]: { [emoji]: string[] } }  — usernames who reacted
-  const [verifiedMsgs, setVerifiedMsgs] = useState({}); // { [msgId]: boolean }
-  const [mutedTopics, setMutedTopics]   = useState(() => {
+  // ── Security state ─────────────────────────────────────────────────────────
+  const [mutedTopics, setMutedTopics] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('echo_muted') || '[]')); }
     catch { return new Set(); }
   });
-  const [showIdentityPanel, setShowIdentityPanel] = useState(false);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const messagesEndRef       = useRef(null);
@@ -318,10 +310,6 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
   const typingThrottleRef    = useRef(0);
   const titleFlashRef        = useRef(null);
   const originalTitleRef     = useRef(document.title);
-  // Always-current ref so async callbacks never use stale peerKeys state
-  const peerKeysRef          = useRef(peerKeys);
-  // Queue of { parsedMsg, targetTopic } waiting for a peer key to arrive
-  const pendingDecryptRef    = useRef({});
 
   // ── Tabs ───────────────────────────────────────────────────────────────────
   const tabs = useMemo(
@@ -479,49 +467,6 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
     try { client.subscribe('chat/__typing'); } catch {}
   }, [client]);
 
-  // ── Pillar 1: broadcast own public key when connected + identity ready ────
-  useEffect(() => {
-    if (!client || status !== 'connected' || !identityReady || !publicProfile) return;
-    try {
-      // Retained so new joiners receive it immediately on subscribe
-      publishRetained(
-        `users/${username}/key`,
-        JSON.stringify({ type: 'key', sender: username, ...publicProfile })
-      );
-    } catch {}
-  }, [client, status, identityReady, publicProfile, username, publishRetained]);
-
-  // ── Keep peerKeysRef in sync so async callbacks always see current keys ───
-  useEffect(() => { peerKeysRef.current = peerKeys; }, [peerKeys]);
-
-  // ── Re-decrypt messages that arrived before the peer's key was known ──────
-  useEffect(() => {
-    const pending = pendingDecryptRef.current;
-    const newKeys = peerKeys;
-    Object.keys(pending).forEach(async (peerName) => {
-      if (!newKeys[peerName]?.ecdhPubKey) return;
-      const queue = pending[peerName] || [];
-      delete pendingDecryptRef.current[peerName];
-      for (const { parsedMsg, targetTopic } of queue) {
-        try {
-          const decrypted = await decrypt(parsedMsg.encrypted, newKeys[peerName].ecdhPubKey);
-          if (decrypted !== null) {
-            setMessagesByTopic(prev => {
-              const msgs = prev[targetTopic] || [];
-              return {
-                ...prev,
-                [targetTopic]: msgs.map(m =>
-                  m.id === parsedMsg.id
-                    ? { ...m, content: decrypted, _decrypted: true }
-                    : m
-                ),
-              };
-            });
-          }
-        } catch {}
-      }
-    });
-  }, [peerKeys, decrypt]);
 
   // ── Persist muted topics ──────────────────────────────────────────────────
   useEffect(() => {
@@ -555,27 +500,6 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
         return;
       }
 
-      // Pillar 1: peer public key announcements (retained, topic: users/<name>/key)
-      if (topic.startsWith('users/') && topic.endsWith('/key')) {
-        try {
-          const payload = JSON.parse(message.toString());
-          if (payload.type === 'key' && payload.sender && payload.sender !== username) {
-            const tofuStatus = setPeerKey(payload.sender, {
-              sigPubKey:  payload.sigPubKey,
-              ecdhPubKey: payload.ecdhPubKey,
-            });
-            if (tofuStatus === 'conflict') {
-              showToast({
-                title: `${payload.sender}'s key changed`,
-                description: 'Their identity was reset (new browser or cleared storage). Messages will re-encrypt with the new key.',
-                status: 'warning',
-                duration: 6000,
-              });
-            }
-          }
-        } catch {}
-        return;
-      }
 
       // One-to-one messages
       const normalizedMe = normalizeUsername(username);
@@ -668,61 +592,6 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
       // Drop already-expired messages
       if (parsedMsg.expiresAt && new Date(parsedMsg.expiresAt).getTime() <= Date.now()) return;
 
-      // Pillar 1: verify signature FIRST (before decryption changes content)
-      if (parsedMsg.sig && parsedMsg.sigPubKey && parsedMsg.id) {
-        // Signing payload = everything except runtime-only fields
-        const { sig, sigPubKey } = parsedMsg;
-        const { sig: _s, sigPubKey: _pk, ...signingPayload } = parsedMsg;
-        const msgId = parsedMsg.id;
-        verify(signingPayload, sig, sigPubKey).then(valid => {
-          setVerifiedMsgs(prev => ({ ...prev, [msgId]: valid }));
-          // Only register key from message if we don't already have a full key for this peer
-          // (avoids overwriting ecdhPubKey with undefined when ecdhPubKey isn't in the message)
-          if (valid && parsedMsg.sender && sigPubKey) {
-            const existing = peerKeysRef.current[parsedMsg.sender];
-            const ecdhPubKey = parsedMsg.ecdhPubKey || existing?.ecdhPubKey;
-            if (ecdhPubKey) {
-              setPeerKey(parsedMsg.sender, { sigPubKey, ecdhPubKey });
-            }
-          }
-        });
-      }
-
-      // Pillar 5: E2E decrypt if message has encrypted payload
-      if (parsedMsg.encrypted && parsedMsg.sender !== username) {
-        const senderKey = peerKeysRef.current[parsedMsg.sender];
-        if (senderKey?.ecdhPubKey) {
-          try {
-            const decrypted = await decrypt(parsedMsg.encrypted, senderKey.ecdhPubKey);
-            if (decrypted !== null) {
-              parsedMsg.content    = decrypted;
-              parsedMsg._decrypted = true;
-            }
-          } catch {}
-        } else {
-          // Key not here yet — queue for decryption once the key arrives
-          const q = pendingDecryptRef.current[parsedMsg.sender] || [];
-          pendingDecryptRef.current[parsedMsg.sender] = [...q, { parsedMsg: { ...parsedMsg }, targetTopic }];
-        }
-      }
-      // Also decrypt own sent messages that bounced back
-      if (parsedMsg.encrypted && parsedMsg.sender === username) {
-        const dmP = parseOneToOneTopic(targetTopic);
-        if (dmP) {
-          const peerName = normalizeUsername(dmP.userA) === normalizeUsername(username)
-            ? dmP.userB : dmP.userA;
-          const peerKey = peerKeysRef.current[peerName];
-          if (peerKey?.ecdhPubKey) {
-            try {
-              const decrypted = await decrypt(parsedMsg.encrypted, peerKey.ecdhPubKey);
-              if (decrypted !== null) {
-                parsedMsg.content    = decrypted;
-                parsedMsg._decrypted = true;
-              }
-            } catch {}
-          }
-        }
-      }
 
       setMessagesByTopic((prev) => ({
         ...prev,
@@ -780,7 +649,7 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
         }
       }
     },
-    [client, username, peerKeys, decrypt, verify, setPeerKey, mutedTopics, showToast]
+    [client, username, mutedTopics, showToast]
   );
 
   useEffect(() => {
@@ -963,32 +832,6 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
           [activeTab.topic]: (prev[activeTab.topic] || []).filter(m => m.id !== messageData.id),
         }));
       }, msLeft);
-    }
-
-    // Pillar 5: E2E encrypt text DMs when peer key is available
-    const dmParsed = parseOneToOneTopic(activeTab.topic);
-    if (dmParsed && messageData.type === 'text' && identity) {
-      const peerName = normalizeUsername(dmParsed.userA) === normalizeUsername(username)
-        ? dmParsed.userB : dmParsed.userA;
-      const peerKey = peerKeys[peerName];
-      if (peerKey?.ecdhPubKey) {
-        try {
-          const encData = await encrypt(messageData.content, peerKey.ecdhPubKey);
-          if (encData) {
-            messageData = { ...messageData, encrypted: encData, content: '[Encrypted]' };
-          }
-        } catch {}
-      }
-    }
-
-    // Pillar 1: sign the message
-    if (identity) {
-      try {
-        const { sig, sigPubKey } = (await sign(messageData)) || {};
-        if (sig) {
-          messageData = { ...messageData, sig, sigPubKey };
-        }
-      } catch {}
     }
 
     client.publish(activeTab.topic, JSON.stringify(messageData));
@@ -1491,26 +1334,9 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
               )}
             </div>
 
-            {/* Timestamp + verified badge + edited + expiry + read receipt */}
+            {/* Timestamp + edited + expiry + read receipt */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, paddingLeft: 2, paddingRight: 2 }}>
               <span style={{ fontSize: 10, color: textTertiary }}>{timeStr}</span>
-              {/* Pillar 1: signature verification badge */}
-              {msg.sig && msg.id && (
-                <span
-                  title={verifiedMsgs[msg.id] === true ? 'Signature verified' : verifiedMsgs[msg.id] === false ? 'Signature invalid!' : 'Verifying...'}
-                  style={{ display: 'flex', alignItems: 'center', color: verifiedMsgs[msg.id] === true ? '#10b981' : verifiedMsgs[msg.id] === false ? '#ef4444' : textTertiary }}
-                >
-                  {verifiedMsgs[msg.id] === true
-                    ? <ShieldCheck size={10} />
-                    : <Shield size={10} />}
-                </span>
-              )}
-              {/* Pillar 5: E2E lock indicator */}
-              {msg._decrypted && (
-                <span title="End-to-end encrypted" style={{ display: 'flex', alignItems: 'center', color: '#10b981' }}>
-                  <Lock size={9} />
-                </span>
-              )}
               {msg.edited && (
                 <span style={{ fontSize: 9, color: textTertiary, fontStyle: 'italic' }}>(edited)</span>
               )}
@@ -1600,51 +1426,6 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
             {dark ? <Sun size={15} /> : <Moon size={15} />}
           </IconBtn>
         </div>
-        {/* Identity fingerprint */}
-        {fingerprint && (
-          <div
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '6px 8px', borderRadius: 8,
-              background: dark ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.06)',
-              border: '1px solid rgba(16,185,129,0.2)',
-              cursor: 'pointer',
-            }}
-            title="Your identity fingerprint. Click to show options."
-            onClick={() => setShowIdentityPanel(v => !v)}
-          >
-            <ShieldCheck size={11} color="#10b981" />
-            <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#10b981', letterSpacing: '0.06em' }}>
-              {fingerprint}
-            </span>
-          </div>
-        )}
-        {/* Identity panel */}
-        {showIdentityPanel && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <button
-              type="button"
-              onClick={async () => {
-                if (!window.confirm('This will erase your current identity and generate a new one. Peers will see your key as changed. Continue?')) return;
-                await resetIdentity();
-                setShowIdentityPanel(false);
-                showToast({ title: 'Identity reset', description: 'New keypair generated.', status: 'info', duration: 3000 });
-              }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                width: '100%', padding: '7px 10px', borderRadius: 8,
-                border: '1px solid rgba(239,68,68,0.25)',
-                background: 'rgba(239,68,68,0.07)',
-                cursor: 'pointer', fontSize: 11,
-                color: '#ef4444', fontFamily: "'DM Sans', sans-serif",
-                textAlign: 'left',
-              }}
-            >
-              <RefreshCw size={11} />
-              Reset identity
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Chats list */}
@@ -1846,16 +1627,6 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
               <span style={{ fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {activeTab?.topic === 'chat' ? '#general' : activeTab?.label}
               </span>
-              {/* Pillar 5: E2E lock indicator for DMs */}
-              {activeTab && parseOneToOneTopic(activeTab.topic) && (() => {
-                const dmP = parseOneToOneTopic(activeTab.topic);
-                const peerName = dmP && normalizeUsername(dmP.userA) === normalizeUsername(username)
-                  ? dmP.userB : dmP?.userA;
-                const hasPeerKey = peerName && peerKeys[peerName]?.ecdhPubKey && identity;
-                return hasPeerKey ? (
-                  <Lock size={12} color="#10b981" title="End-to-end encrypted" />
-                ) : null;
-              })()}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
               <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />

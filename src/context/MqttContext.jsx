@@ -1,6 +1,14 @@
 import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
 import mqtt from 'mqtt';
-import { getStableClientId } from '../utils/identity';
+
+function getStableClientId() {
+  let id = localStorage.getItem('echo_cid');
+  if (!id) {
+    id = `echo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    localStorage.setItem('echo_cid', id);
+  }
+  return id;
+}
 
 const MqttContext = createContext(null);
 
@@ -78,10 +86,6 @@ export const MqttProvider = ({ children }) => {
         // Core subscriptions
         mqttClient.subscribe('chat',       { qos: 1 });
         mqttClient.subscribe('oneToOne/#', { qos: 1 });
-        // Peer public-key announcements — optional, best-effort
-        mqttClient.subscribe('users/+/key', { qos: 1 }, (err) => {
-          if (err) console.warn('[Echo] users/+/key subscription skipped:', err.message);
-        });
 
         // Only announce on the very first connect, not every reconnect
         if (!reconnecting) {
