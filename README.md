@@ -89,12 +89,6 @@ Browser
 
 No server. No database. No accounts. Identity is your keypair.
 
-## Deep dive
-
-See **GUIDE.md** (gitignored, local only) for a full walkthrough of every system:
-crypto identity, E2E encryption, MQTT session mechanics, state management, PWA setup,
-deployment checklist, and extension points.
-
 ## License
 
 No license specified.
