@@ -1152,7 +1152,7 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
               {showAvatar && <Avatar user={msg.sender || '?'} size={32} />}
             </div>
           )}
-          <div style={{ maxWidth: '62%', display: 'flex', flexDirection: 'column', alignItems: isSelf ? 'flex-end' : 'flex-start', position: 'relative' }}>
+          <div style={{ maxWidth: isMobile ? '85%' : '62%', display: 'flex', flexDirection: 'column', alignItems: isSelf ? 'flex-end' : 'flex-start', position: 'relative' }}>
             {showAvatar && (
               <span style={{ fontSize: 11, fontWeight: 500, color: textTertiary, marginBottom: 4, paddingLeft: 2 }}>
                 {msg.sender}
@@ -1593,6 +1593,7 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
             // On mobile, sidebar slides over main content
             ...(isMobile ? {
               position: 'fixed', inset: '0 auto 0 0',
+              paddingTop: 'env(safe-area-inset-top)',
             } : {
               position: 'relative',
             }),
@@ -1613,7 +1614,7 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
             WebkitBackdropFilter: 'blur(32px) saturate(200%)',
             borderLeft: 'none', borderRight: 'none', borderTop: 'none',
             borderBottom: glassSurface.border,
-            padding: '12px 20px',
+            padding: isMobile ? '10px 12px' : '12px 20px',
             display: 'flex', alignItems: 'center', gap: 12,
             zIndex: 5, flexShrink: 0,
           }}
@@ -1982,77 +1983,154 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
             WebkitBackdropFilter: 'blur(32px) saturate(200%)',
             borderLeft: 'none', borderRight: 'none', borderBottom: 'none',
             borderTop: glassSurface.border,
-            padding: '12px 16px',
-            display: 'flex', alignItems: 'center', gap: 10,
+            padding: isMobile ? '8px 10px' : '12px 16px',
+            paddingBottom: isMobile ? 'calc(8px + env(safe-area-inset-bottom))' : '12px',
+            display: 'flex', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 8 : 10,
+            flexDirection: isMobile ? 'column' : 'row',
             flexShrink: 0,
           }}
         >
-          <IconBtn dark={dark} title="Attach file" onClick={() => setIsFileOpen(true)}>
-            <Paperclip size={17} />
-          </IconBtn>
-          <IconBtn dark={dark} title="Share location" onClick={handleLocationShare}>
-            <MapPin size={17} />
-          </IconBtn>
-          <VoiceRecorder
-            dark={dark}
-            onRecordingComplete={(file) => {
-              setSelectedFile(file);
-              showToast({ title: 'Voice note ready', description: 'Press send to share.', status: 'success', duration: 2000 });
-            }}
-          />
-          {/* Disappearing messages timer */}
-          <div style={{ position: 'relative' }}>
-            <button
-              type="button"
-              title={`Disappearing messages: ${EXPIRY_OPTIONS[expiryIndex].label}`}
-              onClick={() => setExpiryIndex(i => (i + 1) % EXPIRY_OPTIONS.length)}
-              style={{
-                height: 36, borderRadius: 18,
-                padding: expiryIndex > 0 ? '0 10px' : '0',
-                width: expiryIndex > 0 ? 'auto' : 36,
-                border: expiryIndex > 0
-                  ? '1px solid rgba(245,158,11,0.4)'
-                  : dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.55)',
-                background: expiryIndex > 0
-                  ? 'rgba(245,158,11,0.12)'
-                  : dark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.5)',
-                backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
-                cursor: 'pointer', outline: 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                flexShrink: 0,
-                color: expiryIndex > 0 ? '#f59e0b' : dark ? 'rgba(238,242,255,0.6)' : 'rgba(17,24,39,0.55)',
-                transition: 'all 0.18s ease',
-                fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 600,
-              }}
-            >
-              <Timer size={15} />
-              {expiryIndex > 0 && EXPIRY_OPTIONS[expiryIndex].label}
-            </button>
-          </div>
-
-          <div style={{ position: 'relative' }}>
-            <IconBtn dark={dark} title="Send GIF" onClick={() => setIsGifOpen(v => !v)}>
-              <Film size={16} />
-            </IconBtn>
-            {isGifOpen && (
-              <div
+          {/* Mobile top row: action buttons */}
+          {isMobile && (
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
+              <IconBtn dark={dark} title="Attach file" onClick={() => setIsFileOpen(true)}>
+                <Paperclip size={17} />
+              </IconBtn>
+              <IconBtn dark={dark} title="Share location" onClick={handleLocationShare}>
+                <MapPin size={17} />
+              </IconBtn>
+              <VoiceRecorder
+                dark={dark}
+                onRecordingComplete={(file) => {
+                  setSelectedFile(file);
+                  showToast({ title: 'Voice note ready', description: 'Press send to share.', status: 'success', duration: 2000 });
+                }}
+              />
+              {/* Disappearing messages timer */}
+              <button
+                type="button"
+                title={`Disappearing messages: ${EXPIRY_OPTIONS[expiryIndex].label}`}
+                onClick={() => setExpiryIndex(i => (i + 1) % EXPIRY_OPTIONS.length)}
                 style={{
-                  position: 'absolute',
-                  bottom: 'calc(100% + 10px)',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  zIndex: 60,
+                  height: 36, borderRadius: 18,
+                  padding: expiryIndex > 0 ? '0 10px' : '0',
+                  width: expiryIndex > 0 ? 'auto' : 36,
+                  border: expiryIndex > 0
+                    ? '1px solid rgba(245,158,11,0.4)'
+                    : dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.55)',
+                  background: expiryIndex > 0
+                    ? 'rgba(245,158,11,0.12)'
+                    : dark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.5)',
+                  backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+                  cursor: 'pointer', outline: 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                  flexShrink: 0,
+                  color: expiryIndex > 0 ? '#f59e0b' : dark ? 'rgba(238,242,255,0.6)' : 'rgba(17,24,39,0.55)',
+                  transition: 'all 0.18s ease',
+                  fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 600,
                 }}
               >
-                <GifPicker
-                  dark={dark}
-                  onSelect={handleGifSelect}
-                  onClose={() => setIsGifOpen(false)}
-                />
+                <Timer size={15} />
+                {expiryIndex > 0 && EXPIRY_OPTIONS[expiryIndex].label}
+              </button>
+              <div style={{ position: 'relative' }}>
+                <IconBtn dark={dark} title="Send GIF" onClick={() => setIsGifOpen(v => !v)}>
+                  <Film size={16} />
+                </IconBtn>
+                {isGifOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: 'calc(100% + 8px)',
+                      left: 0,
+                      transform: 'none',
+                      zIndex: 60,
+                    }}
+                  >
+                    <GifPicker
+                      dark={dark}
+                      onSelect={handleGifSelect}
+                      onClose={() => setIsGifOpen(false)}
+                    />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
+          {/* Desktop action buttons (inline with input) */}
+          {!isMobile && (
+            <>
+              <IconBtn dark={dark} title="Attach file" onClick={() => setIsFileOpen(true)}>
+                <Paperclip size={17} />
+              </IconBtn>
+              <IconBtn dark={dark} title="Share location" onClick={handleLocationShare}>
+                <MapPin size={17} />
+              </IconBtn>
+              <VoiceRecorder
+                dark={dark}
+                onRecordingComplete={(file) => {
+                  setSelectedFile(file);
+                  showToast({ title: 'Voice note ready', description: 'Press send to share.', status: 'success', duration: 2000 });
+                }}
+              />
+              {/* Disappearing messages timer */}
+              <div style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  title={`Disappearing messages: ${EXPIRY_OPTIONS[expiryIndex].label}`}
+                  onClick={() => setExpiryIndex(i => (i + 1) % EXPIRY_OPTIONS.length)}
+                  style={{
+                    height: 36, borderRadius: 18,
+                    padding: expiryIndex > 0 ? '0 10px' : '0',
+                    width: expiryIndex > 0 ? 'auto' : 36,
+                    border: expiryIndex > 0
+                      ? '1px solid rgba(245,158,11,0.4)'
+                      : dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.55)',
+                    background: expiryIndex > 0
+                      ? 'rgba(245,158,11,0.12)'
+                      : dark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.5)',
+                    backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+                    cursor: 'pointer', outline: 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                    flexShrink: 0,
+                    color: expiryIndex > 0 ? '#f59e0b' : dark ? 'rgba(238,242,255,0.6)' : 'rgba(17,24,39,0.55)',
+                    transition: 'all 0.18s ease',
+                    fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 600,
+                  }}
+                >
+                  <Timer size={15} />
+                  {expiryIndex > 0 && EXPIRY_OPTIONS[expiryIndex].label}
+                </button>
+              </div>
+
+              <div style={{ position: 'relative' }}>
+                <IconBtn dark={dark} title="Send GIF" onClick={() => setIsGifOpen(v => !v)}>
+                  <Film size={16} />
+                </IconBtn>
+                {isGifOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: 'calc(100% + 10px)',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      zIndex: 60,
+                    }}
+                  >
+                    <GifPicker
+                      dark={dark}
+                      onSelect={handleGifSelect}
+                      onClose={() => setIsGifOpen(false)}
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Text input + emoji + send (bottom row on mobile, inline on desktop) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 10, flex: isMobile ? undefined : 1 }}>
           {/* Text input */}
           <div
             style={{
@@ -2069,10 +2147,10 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
               value={input}
               onChange={handleInputChange}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
-              placeholder={`Message ${activeTab?.topic === 'chat' ? '#general' : activeTab?.label}... (Shift+Enter for newline)`}
+              placeholder={isMobile ? `Message ${activeTab?.label || '#general'}...` : `Message ${activeTab?.topic === 'chat' ? '#general' : activeTab?.label}... (Shift+Enter for newline)`}
               style={{
                 flex: 1, background: 'none', border: 'none', outline: 'none',
-                fontSize: 14, padding: '10px 0',
+                fontSize: isMobile ? 16 : 14, padding: '10px 0',
                 color: textPrimary, fontFamily: "'DM Sans', sans-serif",
               }}
             />
@@ -2103,6 +2181,7 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
           >
             <ArrowUp size={18} />
           </button>
+          </div>
         </div>
       </main>
 
