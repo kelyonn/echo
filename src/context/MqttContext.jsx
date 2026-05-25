@@ -49,7 +49,13 @@ export const MqttProvider = ({ children }) => {
       reconnectPeriod:    3000,
       connectTimeout:     30 * 1000,
       rejectUnauthorized: false,
-      // No will message — avoids flooding chat on every disconnect
+      // Will fires on unexpected disconnect — signals user went offline
+      will: {
+        topic:   `users/${username}/status`,
+        payload: JSON.stringify({ online: false, user: username }),
+        qos:     1,
+        retain:  true,
+      },
     });
 
     clientRef.current = mqttClient;
@@ -59,8 +65,15 @@ export const MqttProvider = ({ children }) => {
       const handleConnect = () => {
         setStatus('connected');
         setError(null);
-        mqttClient.subscribe('chat',       { qos: 1 });
-        mqttClient.subscribe('oneToOne/#', { qos: 1 });
+        mqttClient.subscribe('chat',           { qos: 1 });
+        mqttClient.subscribe('oneToOne/#',     { qos: 1 });
+        mqttClient.subscribe('users/+/status', { qos: 1 });
+        // Publish retained presence so others know we're online
+        mqttClient.publish(
+          `users/${username}/status`,
+          JSON.stringify({ online: true, user: username, ts: Date.now() }),
+          { qos: 1, retain: true }
+        );
         cleanup();
         resolve(mqttClient);
       };

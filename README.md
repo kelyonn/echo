@@ -1,37 +1,33 @@
 # Echo
 
-Real-time encrypted mesh chat — runs entirely in the browser, no backend required.
+Real-time mesh chat — runs entirely in the browser, no backend required.
 
 ---
 
 ## What it does
 
-Echo connects users through a shared MQTT broker over WebSockets. Every message is
-signed with the sender's Ed25519 key. Direct messages are end-to-end encrypted
-(ECDH P-256 key exchange + AES-256-GCM). The broker routes traffic but cannot read
-DM content.
+Echo connects users through a shared MQTT broker over WebSockets (TLS). Pick a
+username and start chatting — no account, no install, no server-side code.
 
 ## Features
 
 - General room and unlimited direct message chats
-- Ed25519 cryptographic identity — generated in your browser, stored in IndexedDB
-- End-to-end encryption for DMs (ECDH P-256 + AES-256-GCM)
-- TOFU key trust with conflict warnings
-- Message signing + verification badges on every message
-- Offline delivery via MQTT persistent sessions (QoS 1, `clean: false`)
+- Join / leave notifications — centered gray system messages when users arrive or leave
 - Per-chat notification muting, WebAudio beep, OS notifications
-- Reactions, pins, replies, edits, and deletes — all broadcast to peers
+- Reactions, pins, replies, edits, and deletes — broadcast to all peers
 - Voice notes (MediaRecorder), GIF picker (Tenor), image gallery lightbox
 - Disappearing messages and view-once images
 - Markdown rendering, @mentions, slash commands, URL preview cards
 - Location sharing (OpenStreetMap)
-- Progressive Web App — installable, offline-capable, add to home screen
+- Drag-and-drop file sharing (images, PDF, docs — up to 10 MB)
+- Progressive Web App — installable, add to home screen
 - Dark and light themes
+- Mobile responsive with iOS safe-area support
 
 ## Quick start
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/kelyonn/echo.git
 cd echo
 npm install
 cp .env.example .env   # fill in your MQTT broker credentials
@@ -61,8 +57,8 @@ path `/mqtt`).
 npm run build    # outputs to dist/
 ```
 
-Deploy `dist/` to any static host (Netlify, Vercel, GitHub Pages, Nginx). Requires
-HTTPS for PWA features and the Web Notifications API.
+Deploy `dist/` to any static host (Netlify, Vercel, GitHub Pages). Requires HTTPS
+for PWA features and the Web Notifications API.
 
 ## Scripts
 
@@ -82,12 +78,18 @@ HTTPS for PWA features and the Web Notifications API.
 ```
 Browser
   React app (Vite)
-    MqttContext  ──── WebSocket ───► MQTT broker (HiveMQ / Mosquitto)
-    IdentityContext (Ed25519 + ECDH, stored in IndexedDB)
-    ChatPage (all UI state)
+    MqttContext  ──── WebSocket (TLS) ───► MQTT broker (HiveMQ Cloud)
+    ChatPage     (all UI state, message handling)
+    ToastContext (notification toasts)
 ```
 
-No server. No database. No accounts. Identity is your keypair.
+Topics used:
+- `chat` — general room messages
+- `oneToOne/<userA>_<userB>` — direct messages
+- `users/<username>/status` — retained presence (join/leave)
+- `<topic>/__typing` — ephemeral typing indicators
+
+No server. No database. No accounts. Your username is your identity.
 
 ## License
 

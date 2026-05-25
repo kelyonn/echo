@@ -103,7 +103,9 @@ function lsLoad(topic) {
 
 function lsSave(topic, msgs) {
   try {
-    localStorage.setItem(LS_PREFIX + topic, JSON.stringify(msgs.slice(-MAX_STORED)));
+    // Never persist system messages — they're transient presence/event notices
+    const toStore = msgs.filter(m => m.sender !== 'system').slice(-MAX_STORED);
+    localStorage.setItem(LS_PREFIX + topic, JSON.stringify(toStore));
   } catch {}
 }
 
@@ -301,15 +303,18 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
   });
 
   // ── Refs ───────────────────────────────────────────────────────────────────
-  const messagesEndRef       = useRef(null);
-  const messagesContainerRef = useRef(null);
-  const tabsRef              = useRef([]);
-  const isAtBottomRef        = useRef(true);
-  const prevMsgCountRef      = useRef(0);
-  const typingTimersRef      = useRef({});
-  const typingThrottleRef    = useRef(0);
-  const titleFlashRef        = useRef(null);
-  const originalTitleRef     = useRef(document.title);
+  const messagesEndRef        = useRef(null);
+  const messagesContainerRef  = useRef(null);
+  const tabsRef               = useRef([]);
+  const isAtBottomRef         = useRef(true);
+  const prevMsgCountRef       = useRef(0);
+  const typingTimersRef       = useRef({});
+  const typingThrottleRef     = useRef(0);
+  const titleFlashRef         = useRef(null);
+  const originalTitleRef      = useRef(document.title);
+  // Presence: track who's online and debounce rapid left/rejoin (e.g. page refresh)
+  const onlineUsersRef        = useRef(new Set());
+  const presenceDebounceRef   = useRef({});
 
   // ── Tabs ───────────────────────────────────────────────────────────────────
   const tabs = useMemo(
@@ -471,6 +476,56 @@ export default function ChatPage({ username = 'me', dark = false, onToggleDark, 
   // ── MQTT message handler ──────────────────────────────────────────────────
   const handleMessage = useCallback(
     async (topic, message) => {
+      // ── Presence events (join / leave) ──────────────────────────────────────
+      if (topic.startsWith('users/') && topic.endsWith('/status')) {
+        try {
+          const { online, user, ts } = JSON.parse(message.toString());
+          if (!user || user === username) return;
+
+          const makePresenceMsg = (text) => ({
+            id:        `sys_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+            type:      'system',
+            content:   text,
+            sender:    'system',
+            timestamp: new Date().toISOString(),
+          });
+
+          if (online) {
+            // Cancel any pending "left" timer for this user (they're back — page refresh)
+            if (presenceDebounceRef.current[user]) {
+              clearTimeout(presenceDebounceRef.current[user]);
+              delete presenceDebounceRef.current[user];
+              // They bounced right back — don't show either message
+              onlineUsersRef.current.add(user);
+              return;
+            }
+            // Only show "joined" if the message is fresh (not a stale retained message)
+            const isFresh = ts && (Date.now() - ts < 15000);
+            if (isFresh && !onlineUsersRef.current.has(user)) {
+              setMessagesByTopic(prev => ({
+                ...prev,
+                chat: [...(prev.chat || []), makePresenceMsg(`${user} joined`)],
+              }));
+            }
+            onlineUsersRef.current.add(user);
+          } else {
+            // Delay "left" by 4 s — absorbs page-refresh bounces
+            if (onlineUsersRef.current.has(user)) {
+              onlineUsersRef.current.delete(user);
+              if (presenceDebounceRef.current[user]) clearTimeout(presenceDebounceRef.current[user]);
+              presenceDebounceRef.current[user] = setTimeout(() => {
+                delete presenceDebounceRef.current[user];
+                setMessagesByTopic(prev => ({
+                  ...prev,
+                  chat: [...(prev.chat || []), makePresenceMsg(`${user} left`)],
+                }));
+              }, 4000);
+            }
+          }
+        } catch {}
+        return;
+      }
+
       // Typing indicator events
       if (topic.endsWith('/__typing')) {
         const chatTopic = topic.slice(0, topic.length - '/__typing'.length);
