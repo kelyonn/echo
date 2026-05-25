@@ -1,0 +1,25 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e4aaa"/>
+      <stop offset="100%" stop-color="#0a5e40"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- Mesh dots -->
+  <circle cx="156" cy="156" r="22" fill="white" opacity="0.35"/>
+  <circle cx="356" cy="156" r="22" fill="white" opacity="0.35"/>
+  <circle cx="156" cy="356" r="22" fill="white" opacity="0.35"/>
+  <circle cx="356" cy="356" r="22" fill="white" opacity="0.35"/>
+  <circle cx="256" cy="200" r="18" fill="white" opacity="0.25"/>
+  <!-- Mesh lines -->
+  <line x1="156" y1="156" x2="356" y2="156" stroke="white" stroke-width="6" opacity="0.22"/>
+  <line x1="156" y1="356" x2="356" y2="356" stroke="white" stroke-width="6" opacity="0.22"/>
+  <line x1="156" y1="156" x2="156" y2="356" stroke="white" stroke-width="6" opacity="0.22"/>
+  <line x1="356" y1="156" x2="356" y2="356" stroke="white" stroke-width="6" opacity="0.22"/>
+  <line x1="156" y1="156" x2="356" y2="356" stroke="white" stroke-width="4" opacity="0.14"/>
+  <line x1="356" y1="156" x2="156" y2="356" stroke="white" stroke-width="4" opacity="0.14"/>
+  <!-- E lettermark -->
+  <text x="256" y="348" font-family="Georgia, 'Times New Roman', serif" font-size="268" font-weight="bold" font-style="italic" text-anchor="middle" fill="white" opacity="0.96">E</text>
+</svg>
