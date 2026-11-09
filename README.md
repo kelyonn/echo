@@ -1,96 +1,123 @@
-# Echo
+<p align="center">
+  <img src="docs/readme/banner.svg" width="100%" alt="Echo: users arranged around an MQTT broker, messages travelling in and out.">
+</p>
 
-Real-time mesh chat — runs entirely in the browser, no backend required.
+<p align="center">
+  <b>Real-time chat with no backend. The browser is the client; a broker is the wire.</b><br>
+  <sub>Pick a username and talk. No account, no install, no server code, no database. Everything rides on MQTT over secure WebSockets.</sub>
+</p>
 
----
+<p align="center">
+  <sub>
+    <a href="#overview">OVERVIEW</a> &nbsp;·&nbsp;
+    <a href="#quick-start">QUICK START</a> &nbsp;·&nbsp;
+    <a href="#how-it-works-without-a-server">HOW IT WORKS</a> &nbsp;·&nbsp;
+    <a href="#what-it-does">WHAT IT DOES</a> &nbsp;·&nbsp;
+    <a href="#run-it">RUN IT</a> &nbsp;·&nbsp;
+    <a href="#ship-it">SHIP IT</a>
+  </sub>
+</p>
 
-## What it does
+<br>
 
-Echo connects users through a shared MQTT broker over WebSockets (TLS). Pick a
-username and start chatting — no account, no install, no server-side code.
+<table>
+  <tr>
+    <td><sub>SERVER CODE</sub><br><b>None</b></td>
+    <td><sub>DATABASE</sub><br><b>None</b></td>
+    <td><sub>TRANSPORT</sub><br><b>MQTT over WSS</b></td>
+    <td><sub>IDENTITY</sub><br><b>Your username</b></td>
+    <td><sub>INSTALLABLE</sub><br><b>PWA</b></td>
+  </tr>
+</table>
 
-## Features
+## Overview
 
-- General room and unlimited direct message chats
-- Join / leave notifications — centered gray system messages when users arrive or leave
-- Per-chat notification muting, WebAudio beep, OS notifications
-- Reactions, pins, replies, edits, and deletes — broadcast to all peers
-- Voice notes (MediaRecorder), GIF picker (Tenor), image gallery lightbox
-- Disappearing messages and view-once images
-- Markdown rendering, @mentions, slash commands, URL preview cards
-- Location sharing (OpenStreetMap)
-- Drag-and-drop file sharing (images, PDF, docs — up to 10 MB)
-- Progressive Web App — installable, add to home screen
-- Dark and light themes
-- Mobile responsive with iOS safe-area support
+Echo is a chat app that needs no backend at all. Pick a username and start talking: a group room, direct messages, voice notes, files and reactions, with no account and no server of its own.
+
+> [!NOTE]
+> The broker only routes. Reactions, edits, deletes and presence are all messages, so every browser converges on the same conversation with nothing in the middle keeping state.
 
 ## Quick start
 
 ```bash
-git clone https://github.com/kelyonn/echo.git
-cd echo
 npm install
-cp .env.example .env   # fill in your MQTT broker credentials
-npm run dev
+cp .env.example .env      # your MQTT broker's WebSocket URL
+npm run dev               # http://localhost:5173
 ```
 
-Open `http://localhost:5173`, enter a username, and start chatting.
+## Architecture
 
-## Configuration
+```mermaid
+flowchart LR
+    a["browser · ana"] <-- "WSS" --> broker[("MQTT broker")]
+    b["browser · kai"] <-- "WSS" --> broker
+    c["browser · mei"] <-- "WSS" --> broker
+    broker --- t1["chat"]
+    broker --- t2["oneToOne/ana_kai"]
+    broker --- t3["users/+/status<br/>retained"]
+```
 
-Copy `.env.example` to `.env` and set:
+
+## How it works without a server
+
+Every client connects straight to a shared MQTT broker over TLS WebSockets and talks in topics. The broker routes; the browsers do everything else.
+
+| Topic | Carries |
+|---|---|
+| `chat` | the general room |
+| `oneToOne/<userA>_<userB>` | a direct conversation, one topic per pair |
+| `users/<username>/status` | presence, as a **retained** message, so newcomers see who is already here |
+| `<topic>/__typing` | ephemeral typing indicators |
+
+Reactions, pins, replies, edits and deletes are messages too, broadcast to every peer, so every client converges on the same conversation without anything in the middle keeping state.
+
+```
+Browser ── React (Vite)
+            ├─ MqttContext ───── WSS (TLS) ─────►  MQTT broker
+            ├─ ChatPage    all UI state and message handling
+            └─ ToastContext
+```
+
+## What it does
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><b>Talk</b><br><sub>A general room and unlimited direct chats. Markdown, @mentions, slash commands, link preview cards, replies, edits, deletes, reactions and pins.</sub></td>
+    <td width="33%" valign="top"><b>Share</b><br><sub>Voice notes, GIFs, an image lightbox, drag-and-drop files up to 10 MB, and a location on OpenStreetMap.</sub></td>
+    <td width="33%" valign="top"><b>Disappear</b><br><sub>Disappearing messages and view-once images. Join and leave notices. Per-chat mute, sounds and OS notifications.</sub></td>
+  </tr>
+</table>
+
+Dark and light themes, responsive down to a phone with iOS safe areas, and installable to the home screen.
+
+## Run it
+
+```bash
+git clone https://github.com/kelyonn/echo.git && cd echo
+npm install
+cp .env.example .env     # your broker's WebSocket URL and credentials
+npm run dev              # http://localhost:5173
+```
 
 ```
 VITE_MQTT_BROKER_URL=wss://your-broker:8884/mqtt
-VITE_MQTT_USERNAME=your-username
-VITE_MQTT_PASSWORD=your-password
-VITE_LINKPREVIEW_API_KEY=     # optional, for URL preview cards
+VITE_MQTT_USERNAME=...
+VITE_MQTT_PASSWORD=...
+VITE_LINKPREVIEW_API_KEY=     # optional, for link cards
 ```
 
-HiveMQ Cloud free tier works out of the box. Create an account at
-https://www.hivemq.com/mqtt-cloud-broker/ and use the WebSocket endpoint (port 8884,
-path `/mqtt`).
+The HiveMQ Cloud free tier works as is: use its WebSocket endpoint, port 8884, path `/mqtt`.
 
-## Build for production
+## Ship it
 
 ```bash
-npm run build    # outputs to dist/
+npm run build      # static files in dist/
 ```
 
-Deploy `dist/` to any static host (Netlify, Vercel, GitHub Pages). Requires HTTPS
-for PWA features and the Web Notifications API.
+Any static host will do. Serve it over HTTPS, which the PWA and browser notifications require.
 
-## Scripts
-
-| Command | Description |
+| Command | |
 |---|---|
-| `npm run dev` | Start development server |
-| `npm run build` | Production build |
-| `npm run preview` | Preview production build locally |
-| `npm run lint` | Run ESLint |
-| `npm run format` | Check formatting (Prettier) |
-| `npm run format:write` | Apply Prettier formatting |
-| `npm test` | Run unit tests (Vitest) |
-| `npm run test:watch` | Watch mode tests |
-
-## Architecture overview
-
-```
-Browser
-  React app (Vite)
-    MqttContext  ──── WebSocket (TLS) ───► MQTT broker (HiveMQ Cloud)
-    ChatPage     (all UI state, message handling)
-    ToastContext (notification toasts)
-```
-
-Topics used:
-- `chat` — general room messages
-- `oneToOne/<userA>_<userB>` — direct messages
-- `users/<username>/status` — retained presence (join/leave)
-- `<topic>/__typing` — ephemeral typing indicators
-
-No server. No database. No accounts. Your username is your identity.
-
-## License
-
-No license specified.
+| `npm test` | unit tests (Vitest) |
+| `npm run lint` | ESLint |
+| `npm run format` | Prettier check |
